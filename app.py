@@ -6,25 +6,30 @@ import ebooklib
 from ebooklib import epub
 import streamlit as st
 
+# ตั้งค่าหน้าเว็บ
 st.set_page_config(
-    page_title="EPUB Book Translator", page_icon="📚", layout="centered"
+    page_title="Eva01 Style - EPUB Translator", page_icon="📖", layout="centered"
 )
 
-st.title("📚 แปลหนังสือ EPUB (อังกฤษ ➡️ ไทย)")
+# ส่วนหัวของแอปพลิเคชัน
+st.title("📖 เครื่องมือแปลหนังสือ EPUB (อังกฤษ ➡️️ ไทย)")
 st.write(
-    "อัปโหลดไฟล์ EPUB เลือกรูปแบบการแปล แล้วกดแปลได้ทันที (ไม่ต้องใช้ API Key)"
+    "อัปโหลดไฟล์หนังสือของคุณ เลือกรูปแบบการแปลที่ต้องการ ระบบจะทำการแปลให้อัตโนมัติ"
 )
 
+# สร้างกล่องเลือก Option ตามที่คุณต้องการ
+st.markdown("### ⚙️ ตั้งค่ารูปแบบการแปล")
 translation_mode = st.radio(
-    "เลือกรูปแบบการแปล:",
+    "เลือกโหมดการแปลภาษา:",
     (
-        "สองภาษา (สลับย่อหน้า: อังกฤษบน - ไทยล่าง)",
-        "ภาษาไทยล้วน (แปลธรรมชาติ อ่านง่าย)",
+        "📚 แบบสองภาษา (สลับย่อหน้า: ต้นฉบับอังกฤษบน - แปลไทยล่าง)",
+        "🇹🇭 เฉพาะภาษาไทยล้วน (แปลธรรมชาติ อ่านลื่นไหล)",
     ),
 )
 
+# ช่องอัปโหลดไฟล์
 uploaded_file = st.file_uploader(
-    "เลือกไฟล์หนังสือ EPUB ของคุณ", type=["epub"]
+    "เลือกไฟล์หนังสือรูปแบบ .epub", type=["epub"]
 )
 
 
@@ -33,13 +38,14 @@ def translate_text(text, mode_bilingual=True):
     return text
   try:
     translator = GoogleTranslator(source="en", target="th")
+    # ตัดแบ่งข้อความหากยาวเกินโควต้าของ Google Translate
     if len(text) > 4000:
       chunks = [text[i : i + 4000] for i in range(0, len(text), 4000)]
       translated_chunks = [translator.translate(chunk) for chunk in chunks]
       translated_text = "".join(translated_chunks)
     else:
       translated_text = translator.translate(text)
-    time.sleep(0.3)
+    time.sleep(0.3)  # หน่วงเวลาเล็กน้อยเพื่อความเสถียร
 
     if mode_bilingual:
       return f"{text}\n\n{translated_text}"
@@ -50,39 +56,43 @@ def translate_text(text, mode_bilingual=True):
 
 
 if uploaded_file is not None:
-  if st.button("🚀 เริ่มต้นแปลหนังสือ"):
-    with st.spinner("กำลังแปลหนังสือ โปรดรอสักครู่..."):
-      with tempfile.NamedTemporaryFile(delete=False, suffix=".epub") as tmp_in:
-        tmp_in.write(uploaded_file.getbuffer())
-        input_path = tmp_in.name
+  st.info(f"📁 ไฟล์ที่เลือก: **{uploaded_file.name}**")
 
-      output_path = input_path.replace(".epub", "_translated.epub")
+  if st.button("🚀 เริ่มต้นแปลหนังสือเลย"):
+    progress_bar = st.progress(0)
+    status_text = st.empty()
 
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".epub") as tmp_in:
+      tmp_in.write(uploaded_file.getbuffer())
+      input_path = tmp_in.name
+
+    output_path = input_path.replace(".epub", "_translated.epub")
+
+    try:
+      status_text.text("กำลังอ่านโครงสร้างไฟล์หนังสือ...")
       book = epub.read_epub(input_path)
       new_book = epub.EpubBook()
 
-      # --- ป้องกัน Error กรณีหนังสือไม่มี Identifier ---
+      # ป้องกัน Error กรณีหนังสือไม่มีรหัส Identifier
       try:
-        book_id = book.identifier
-        if not book_id:
-          book_id = "id123456"
+        book_id = book.identifier if book.identifier else "id123456"
       except Exception:
         book_id = "id123456"
       new_book.set_identifier(str(book_id))
 
-      # --- ป้องกัน Error กรณีหนังสือไม่มี Title ---
+      # ตั้งชื่อหนังสือและภาษา
       try:
         book_title = book.title if book.title else "Untitled Book"
       except Exception:
         book_title = "Untitled Book"
 
-      is_bilingual = "สองภาษา" in translation_mode
+      is_bilingual = "แบบสองภาษา" in translation_mode
       new_book.set_title(
           book_title + (" (Bilingual)" if is_bilingual else " (Thai)")
       )
       new_book.set_language("th")
 
-      # --- ป้องกัน Error กรณีหนังสือไม่มี Authors ---
+      # จัดการข้อมูลผู้แต่ง
       try:
         authors = book.get_authors()
         if authors:
@@ -93,8 +103,13 @@ if uploaded_file is not None:
       except Exception:
         new_book.add_author("Unknown Author")
 
-      # ประมวลผลแต่ละบท
-      for item in book.get_items():
+      status_text.text("กำลังแปลเนื้อหาภายในหนังสือ โปรดรอสักครู่...")
+
+      # ดึงรายการเอกสารทั้งหมดมาประมวลผล
+      items = list(book.get_items())
+      total_items = len(items)
+
+      for idx, item in enumerate(items):
         if item.get_type() == ebooklib.ITEM_DOCUMENT:
           try:
             soup = BeautifulSoup(item.get_content(), "html.parser")
@@ -108,16 +123,27 @@ if uploaded_file is not None:
                 p.string = translated
             item.set_content(str(soup).encode("utf-8"))
           except Exception:
-            pass  # หากหน้าไหนแปลงพลาด ข้ามไปหน้าถัดไปทันที
+            pass
         new_book.add_item(item)
 
-      epub.write_epub(output_path, new_book)
+        # อัปเดตแถบสถานะความคืบหน้า
+        progress = min((idx + 1) / total_items, 1.0)
+        progress_bar.progress(progress)
 
-    st.success("🎉 แปลหนังสือเสร็จเรียบร้อยแล้ว!")
-    with open(output_path, "rb") as f:
-      st.download_button(
-          label="📥 ดาวน์โหลดไฟล์ EPUB ที่แปลแล้ว",
-          data=f,
-          file_name=uploaded_file.name.replace(".epub", "_Thai.epub"),
-          mime="application/epub+zip",
+      epub.write_epub(output_path, new_book)
+      status_text.text("แปลหนังสือเสร็จสมบูรณ์!")
+      st.success("🎉 แปลหนังสือเรียบร้อยแล้ว พร้อมดาวน์โหลดใช้งานได้ทันที!")
+
+      # ปุ่มดาวน์โหลด
+      with open(output_path, "rb") as f:
+        st.download_button(
+            label="📥 ดาวน์โหลดไฟล์ EPUB ที่แปลแล้ว",
+            data=f,
+            file_name=uploaded_file.name.replace(".epub", "_Thai.epub"),
+            mime="application/epub+zip",
+        )
+
+    except Exception as e:
+      st.error(
+          f"เกิดข้อผิดพลาดขึ้นในกระบวนการแปล: {str(e)}"
       )
