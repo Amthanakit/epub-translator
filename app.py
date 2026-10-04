@@ -61,7 +61,7 @@ if uploaded_file is not None:
       book = epub.read_epub(input_path)
       new_book = epub.EpubBook()
 
-      # ป้องกัน Error กรณีหนังสือไม่มี Identifier หรืออ่านค่าไม่ได้
+      # --- ป้องกัน Error กรณีหนังสือไม่มี Identifier ---
       try:
         book_id = book.identifier
         if not book_id:
@@ -70,26 +70,45 @@ if uploaded_file is not None:
         book_id = "id123456"
       new_book.set_identifier(str(book_id))
 
+      # --- ป้องกัน Error กรณีหนังสือไม่มี Title ---
+      try:
+        book_title = book.title if book.title else "Untitled Book"
+      except Exception:
+        book_title = "Untitled Book"
+
       is_bilingual = "สองภาษา" in translation_mode
-      book_title = book.title if book.title else "Untitled"
       new_book.set_title(
           book_title + (" (Bilingual)" if is_bilingual else " (Thai)")
       )
       new_book.set_language("th")
 
-      for author in book.get_authors():
-        new_book.add_author(author)
+      # --- ป้องกัน Error กรณีหนังสือไม่มี Authors ---
+      try:
+        authors = book.get_authors()
+        if authors:
+          for author in authors:
+            new_book.add_author(author)
+        else:
+          new_book.add_author("Unknown Author")
+      except Exception:
+        new_book.add_author("Unknown Author")
 
+      # ประมวลผลแต่ละบท
       for item in book.get_items():
         if item.get_type() == ebooklib.ITEM_DOCUMENT:
-          soup = BeautifulSoup(item.get_content(), "html.parser")
-          paragraphs = soup.find_all(["p", "h1", "h2", "h3", "h4"])
-          for p in paragraphs:
-            orig_text = p.get_text()
-            if len(orig_text.strip()) > 2:
-              translated = translate_text(orig_text, mode_bilingual=is_bilingual)
-              p.string = translated
-          item.set_content(str(soup).encode("utf-8"))
+          try:
+            soup = BeautifulSoup(item.get_content(), "html.parser")
+            paragraphs = soup.find_all(["p", "h1", "h2", "h3", "h4"])
+            for p in paragraphs:
+              orig_text = p.get_text()
+              if len(orig_text.strip()) > 2:
+                translated = translate_text(
+                    orig_text, mode_bilingual=is_bilingual
+                )
+                p.string = translated
+            item.set_content(str(soup).encode("utf-8"))
+          except Exception:
+            pass  # หากหน้าไหนแปลงพลาด ข้ามไปหน้าถัดไปทันที
         new_book.add_item(item)
 
       epub.write_epub(output_path, new_book)
