@@ -12,8 +12,7 @@ st.set_page_config(
 
 st.title("📚 แปลหนังสือ EPUB (อังกฤษ ➡️ ไทย)")
 st.write(
-    "อัปโหลดไฟล์ EPUB เลือกรูปแบบการแปล แล้วกดแปลได้ทันที (ไม่ต้องใช้ API"
-    " Key)"
+    "อัปโหลดไฟล์ EPUB เลือกรูปแบบการแปล แล้วกดแปลได้ทันที (ไม่ต้องใช้ API Key)"
 )
 
 translation_mode = st.radio(
@@ -53,9 +52,7 @@ def translate_text(text, mode_bilingual=True):
 if uploaded_file is not None:
   if st.button("🚀 เริ่มต้นแปลหนังสือ"):
     with st.spinner("กำลังแปลหนังสือ โปรดรอสักครู่..."):
-      with tempfile.NamedTemporaryFile(
-          delete=False, suffix=".epub"
-      ) as tmp_in:
+      with tempfile.NamedTemporaryFile(delete=False, suffix=".epub") as tmp_in:
         tmp_in.write(uploaded_file.getbuffer())
         input_path = tmp_in.name
 
@@ -63,10 +60,20 @@ if uploaded_file is not None:
 
       book = epub.read_epub(input_path)
       new_book = epub.EpubBook()
-      new_book.set_identifier(book.identifier)
+
+      # ป้องกัน Error กรณีหนังสือไม่มี Identifier หรืออ่านค่าไม่ได้
+      try:
+        book_id = book.identifier
+        if not book_id:
+          book_id = "id123456"
+      except Exception:
+        book_id = "id123456"
+      new_book.set_identifier(str(book_id))
+
       is_bilingual = "สองภาษา" in translation_mode
+      book_title = book.title if book.title else "Untitled"
       new_book.set_title(
-          book.title + (" (Bilingual)" if is_bilingual else " (Thai)")
+          book_title + (" (Bilingual)" if is_bilingual else " (Thai)")
       )
       new_book.set_language("th")
 
@@ -80,9 +87,7 @@ if uploaded_file is not None:
           for p in paragraphs:
             orig_text = p.get_text()
             if len(orig_text.strip()) > 2:
-              translated = translate_text(
-                  orig_text, mode_bilingual=is_bilingual
-              )
+              translated = translate_text(orig_text, mode_bilingual=is_bilingual)
               p.string = translated
           item.set_content(str(soup).encode("utf-8"))
         new_book.add_item(item)
